@@ -4,46 +4,6 @@ namespace MinimalChess
 {
     public static class Notation
     {
-        public static char ToChar(Piece piece)
-        {
-            return piece switch
-            {
-                Piece.WhitePawn => 'P',
-                Piece.WhiteKnight => 'N',
-                Piece.WhiteBishop => 'B',
-                Piece.WhiteRook => 'R',
-                Piece.WhiteQueen => 'Q',
-                Piece.WhiteKing => 'K',
-                Piece.BlackPawn => 'p',
-                Piece.BlackKnight => 'n',
-                Piece.BlackBishop => 'b',
-                Piece.BlackRook => 'r',
-                Piece.BlackQueen => 'q',
-                Piece.BlackKing => 'k',
-                _ => ' ',
-            };
-        }
-
-        public static Piece ToPiece(char ascii)
-        {
-            return ascii switch
-            {
-                'P' => Piece.WhitePawn,
-                'N' => Piece.WhiteKnight,
-                'B' => Piece.WhiteBishop,
-                'R' => Piece.WhiteRook,
-                'Q' => Piece.WhiteQueen,
-                'K' => Piece.WhiteKing,
-                'p' => Piece.BlackPawn,
-                'n' => Piece.BlackKnight,
-                'b' => Piece.BlackBishop,
-                'r' => Piece.BlackRook,
-                'q' => Piece.BlackQueen,
-                'k' => Piece.BlackKing,
-                _ => throw new ArgumentException($"Piece character {ascii} not supported."),
-            };
-        }
-
         public static string ToSquareName(byte squareIndex)
         {
             //This is the reverse of the ToSquareIndex()

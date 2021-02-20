@@ -1,6 +1,8 @@
-﻿using MinimalChess;
+﻿using Chess;
+using MinimalChess;
 using System;
 using System.Threading.Tasks;
+using static Chess.Move;
 
 namespace MinimalChessEngine
 {
@@ -10,7 +12,7 @@ namespace MinimalChessEngine
 
         static async Task Main(string[] args)
         {
-            Console.WriteLine("MinimalChess 0.2.1");
+            Console.WriteLine("SebLague Chess-AI (UCI capable)");
             _engine.Start();
             while (_engine.Running)
             {
@@ -26,8 +28,8 @@ namespace MinimalChessEngine
             switch (tokens[0])
             {
                 case "uci":
-                    Console.WriteLine("id name MinimalChess 0.2");
-                    Console.WriteLine("id author Thomas Jahn");
+                    Console.WriteLine("id name SebLague Chess-AI");
+                    Console.WriteLine("id author Sebastian Lague");
                     Console.WriteLine("uciok");
                     break;
                 case "isready":
@@ -57,16 +59,16 @@ namespace MinimalChessEngine
         {
             //position [fen <fenstring> | startpos ]  moves <move1> .... <movei>
             if (tokens[1] == "startpos")
-                _engine.SetupPosition(new Board(Board.STARTING_POS_FEN));
+                _engine.SetupPosition();
             else if (tokens[1] == "fen") //rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
             {
                 string fen = string.Join(' ', tokens, 2, tokens.Length - 2);
-                _engine.SetupPosition(new Board(fen));
+                _engine.SetupPosition(fen);
             }
             else
             {
                 Uci.Log("'position' parameters missing or not understood. Assuming 'startpos'.");
-                _engine.SetupPosition(new Board(Board.STARTING_POS_FEN));
+                _engine.SetupPosition();
             }
 
             int firstMove = Array.IndexOf(tokens, "moves") + 1;
@@ -75,9 +77,48 @@ namespace MinimalChessEngine
 
             for (int i = firstMove; i < tokens.Length; i++)
             {
-                Move move = new Move(tokens[i]);
+                Move move = MoveFromUciNotation(tokens[i]);
                 _engine.Play(move);
             }
+        }
+
+        public static Move MoveFromUciNotation(string uciMoveNotation)
+        {
+            if (uciMoveNotation.Length < 4)
+                throw new ArgumentException($"Long algebraic notation expected. '{uciMoveNotation}' is too short!");
+            if (uciMoveNotation.Length > 5)
+                throw new ArgumentException($"Long algebraic notation expected. '{uciMoveNotation}' is too long!");
+
+            //expected format is the long algebraic notation without piece names
+            https://en.wikipedia.org/wiki/Algebraic_notation_(chess)
+            //Examples: e2e4, e7e5, e1g1(white short castling), e7e8q(for promotion)
+            string fromSquare = uciMoveNotation.Substring(0, 2);
+            string toSquare = uciMoveNotation.Substring(2, 2);
+            int fromIndex = Notation.ToSquareIndex(fromSquare);
+            int toIndex = Notation.ToSquareIndex(toSquare);
+                        
+            
+            int flags = 0;
+            //the presence of a 5th character should mean promotion
+            if(uciMoveNotation.Length == 5)
+            {
+                //promotion flags
+                char promotion = uciMoveNotation[4];
+                flags = promotion switch
+                {
+                    'N' => Flag.PromoteToKnight,
+                    'B' => Flag.PromoteToBishop,
+                    'R' => Flag.PromoteToRook,
+                    'Q' => Flag.PromoteToQueen,
+                    'n' => Flag.PromoteToKnight,
+                    'b' => Flag.PromoteToBishop,
+                    'r' => Flag.PromoteToRook,
+                    'q' => Flag.PromoteToQueen,
+                    _ => throw new NotImplementedException()
+                };
+            }
+
+            return new Move(fromIndex, toIndex, flags);
         }
 
         private static void UciGo(string[] tokens)

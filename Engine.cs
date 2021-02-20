@@ -1,8 +1,8 @@
-﻿using MinimalChess;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
+using Chess;
 
 
 namespace MinimalChessEngine
@@ -11,7 +11,16 @@ namespace MinimalChessEngine
     {
         static public void BestMove(Move move)
         {
-            Console.WriteLine($"bestmove {move}");
+            string moveStr = BoardRepresentation.SquareNameFromIndex(move.StartSquare);
+            moveStr += BoardRepresentation.SquareNameFromIndex(move.TargetSquare);
+            // add promotion piece
+            if (move.IsPromotion)
+            {
+                int promotionPieceType = move.PromotionPieceType;
+                moveStr += PGNCreator.GetSymbolFromPieceType(promotionPieceType);
+            }
+
+            Console.WriteLine($"bestmove {moveStr}");
         }
 
         static internal void Info(int depth, int score, long nodes, int timeMs, Move[] pv)
@@ -30,17 +39,16 @@ namespace MinimalChessEngine
     class Engine
     {
         const int MOVE_TIME_MARGIN = 10;
-        const int BRANCHING_FACTOR_ESTIMATE = 5;
 
-        IterativeSearch _search = null;
+        MoveGenerator _moveGen = new MoveGenerator();
+        Search _search = null;
         Thread _searching = null;
         Move _best = default;
         long _t0 = -1;
         long _tN = -1;
         int _timeBudget = 0;
         int _searchDepth = 0;
-        Board _board = new Board(Board.STARTING_POS_FEN);
-        List<Board> _history = new List<Board>();
+        Board _board = new Board();
 
         public bool Running { get; private set; }
 
@@ -64,22 +72,33 @@ namespace MinimalChessEngine
         //*** SETUP ***
         //*************
 
-        internal void SetupPosition(Board board)
+        internal void SetupPosition()
+        {
+            SetupPosition(FenUtility.startFen);
+        }
+
+        internal void SetupPosition(string fen)
         {
             Stop();
-            _board = new Board(board);//make a copy
-            _history.Clear();
-            _history.Add(new Board(_board));
+            _board.LoadPosition(fen);
         }
 
         internal void Play(Move move)
         {
             Stop();
-            Piece captured = _board.Play(move);
-            if (captured != Piece.None)
-                _history.Clear();//after capture the previous positions can't be replicated anyway so we don't need to remember them
+            _board.MakeMove(WithFlags(move));
+        }
 
-            _history.Add(new Board(_board));
+
+        //TJ: setting the right flags after parsing the move from a string without having a board instance as context isn't possible and so we add the flags here
+        public Move WithFlags(Move move)
+        {
+            foreach (var candidate in _moveGen.GenerateMoves(_board, true))
+                if (candidate.StartSquare == move.StartSquare && candidate.TargetSquare == move.TargetSquare && candidate.PromotionPieceType == move.PromotionPieceType)
+                    return candidate;
+
+            //not found? well... that's... kinda bad
+            throw new Exception(move.Name + " not valid in the given position!");
         }
 
         //**************
@@ -114,8 +133,8 @@ namespace MinimalChessEngine
         {
             Stop();
             _searchDepth = maxSearchDepth;
-            int myTime = _board.ActiveColor == Color.Black ? blackTime : whiteTime;
-            int myIncrement = _board.ActiveColor == Color.Black ? blackIncrement : whiteIncrement;
+            int myTime = _board.WhiteToMove ? whiteTime : blackTime;
+            int myIncrement = _board.WhiteToMove ? whiteIncrement : blackIncrement;
             int totalTime = myTime + myIncrement * (movesToGo - 1) - MOVE_TIME_MARGIN;
             _timeBudget = totalTime / movesToGo;
             Uci.Log($"Search budget set to {_timeBudget}ms!");
@@ -139,55 +158,17 @@ namespace MinimalChessEngine
         private void Search()
         {
             _tN = Now;
-            _search.SearchDeeper(() => RemainingTimeBudget < 0);
-
-            //aborted?
-            if (_search.Aborted)
-            {
-                Uci.Log($"WASTED {MilliSeconds(Now - _tN)}ms on an aborted a search!");
-                Uci.BestMove(_best);
-                _search = null;
-                return;
-            }
-
-            //collect PV
-            Collect();
-
-            //return now to save time?
-            int estimate = BRANCHING_FACTOR_ESTIMATE * MilliSeconds(Now - _tN);
-            if (RemainingTimeBudget < estimate)
-            {
-                Uci.Log($"Estimate of {estimate}ms EXCEEDS budget of {RemainingTimeBudget}ms. Quit!");
-                Uci.BestMove(_best);
-                _search = null;
-                return;
-            }
-
-            //max depth reached or game over?
-            if (_search.Depth >= _searchDepth || _search.GameOver)
-            {
-                Uci.BestMove(_best);
-                _search = null;
-                return;
-            }
-
-            //Search deeper...
-            Search();
-        }
-
-        private void Collect()
-        {
-            int score = (int)_search.Position.ActiveColor * _search.Score;
-            Uci.Info(_search.Depth, score, _search.EvalCount, ElapsedMilliseconds, _search.PrincipalVariation);
-            _best = _search.PrincipalVariation[0];
+            _search.StartSearch(() => RemainingTimeBudget < 0);
+            _best = _search.bestMove;
+            Uci.BestMove(_best);
+            _search = null;
+            return;
         }
 
         private void StartSearch()
         {
             _t0 = Now;
-            _search = new IterativeSearch(_board, moves => AvoidRepetitionAndRandomize(_board, moves, _history));
-            _search.SearchDeeper(); //do the first iteration. it's cheap, no time check, no thread
-            Collect();
+            _search = new Search(_board, new AISettings());
             _searching = new Thread(Search);
             _searching.Priority = ThreadPriority.Highest;
             _searching.Start();
@@ -204,22 +185,5 @@ namespace MinimalChessEngine
         private int ElapsedMilliseconds => MilliSeconds(Now - _t0);
 
         private int RemainingTimeBudget => _timeBudget - ElapsedMilliseconds;
-
-        private void AvoidRepetitionAndRandomize(Board root, LegalMoves moves, List<Board> history)
-        {
-            //while there are more then 1 moves iterate backwards and remove those that lead to a repetition
-            for (int i = moves.Count - 1; i >= 0 && moves.Count > 1; i--)
-            {
-                Move move = moves[i];
-                Board test = new Board(root, move);
-                //is the board in the history? skip the move!
-                if (history.Contains(test))
-                {
-                    Console.WriteLine($"Move {move} would repeat a position. Skipped!");
-                    moves.RemoveAt(i);
-                }
-            }
-            moves.Randomize();
-        }
     }
 }

@@ -1,15 +1,14 @@
 ﻿namespace Chess {
 	using System.Collections.Generic;
 	using System.Collections;
-	using UnityEngine;
 
-	[CreateAssetMenu (menuName = "AI/Settings")]
-	public class AISettings : ScriptableObject {
+
+	public class AISettings {
 
 		public event System.Action requestAbortSearch;
 
 		public int depth;
-		public bool useIterativeDeepening;
+		public bool useIterativeDeepening = true;
 		public bool useTranspositionTable;
 
 		public bool useThreading;
@@ -18,10 +17,11 @@
 		public bool endlessSearchMode;
 		public bool clearTTEachMove;
 
+		//TJ: book currently not supported, it's handled by the GUI in UCI engines
 		public bool useBook;
-		public TextAsset book;
+		//public TextAsset book;
 		public int maxBookPly = 10;
-		
+
 		public MoveGenerator.PromotionMode promotionsToSearch;
 
 		public Search.SearchDiagnostics diagnostics;

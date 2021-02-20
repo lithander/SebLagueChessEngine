@@ -1,4 +1,5 @@
 ﻿namespace Chess {
+	using System;
 	using System.Collections.Generic;
 
 	public class Board {

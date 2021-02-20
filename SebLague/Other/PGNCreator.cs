@@ -104,7 +104,7 @@
 			return moveNotation;
 		}
 
-		static string GetSymbolFromPieceType (int pieceType) {
+		public static string GetSymbolFromPieceType (int pieceType) {
 			switch (pieceType) {
 				case Piece.Rook:
 					return "R";

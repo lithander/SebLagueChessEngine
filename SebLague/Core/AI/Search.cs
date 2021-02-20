@@ -1,7 +1,8 @@
 ﻿namespace Chess {
+    using MinimalChessEngine;
+	using System;
 	using System.Collections.Generic;
 	using System.Threading;
-	using UnityEngine;
 	using static System.Math;
 
 	public class Search {
@@ -18,10 +19,11 @@
 
 		Move bestMoveThisIteration;
 		int bestEvalThisIteration;
-		Move bestMove;
+		public Move bestMove;
 		int bestEval;
 		int currentIterativeSearchDepth;
-		bool abortSearch;
+		Func<bool> abortSearch;
+		public bool Aborted => abortSearch();
 
 		Move invalidMove;
 		MoveOrdering moveOrdering;
@@ -49,7 +51,8 @@
 			//Debug.Log ("TT entry: " + s + " bytes. Total size: " + ((s * transpositionTableSize) / 1000f) + " mb.");
 		}
 
-		public void StartSearch () {
+		//TJ: Instead of searching until EndSearch() is called we pass a callback to the function that should be called regularily to determine if the search needs to be stopped
+		public void StartSearch (Func<bool> abortCondition) {
 			InitDebugInfo ();
 
 			// Initialize search settings
@@ -65,7 +68,7 @@
 
 			moveGenerator.promotionsToGenerate = settings.promotionsToSearch;
 			currentIterativeSearchDepth = 0;
-			abortSearch = false;
+			abortSearch = abortCondition;
 			searchDiagnostics = new SearchDiagnostics ();
 
 			// Iterative deepening. This means doing a full search with a depth of 1, then with a depth of 2, and so on.
@@ -75,7 +78,7 @@
 
 				for (int searchDepth = 1; searchDepth <= targetDepth; searchDepth++) {
 					SearchMoves (searchDepth, 0, negativeInfinity, positiveInfinity);
-					if (abortSearch) {
+					if (abortSearch()) {
 						break;
 					} else {
 						currentIterativeSearchDepth = searchDepth;
@@ -111,12 +114,12 @@
 			return (bestMove, bestEval);
 		}
 
-		public void EndSearch () {
-			abortSearch = true;
-		}
+		//public void EndSearch () {
+		//	abortSearch = true;
+		//}
 
 		int SearchMoves (int depth, int plyFromRoot, int alpha, int beta) {
-			if (abortSearch) {
+			if (abortSearch()) {
 				return 0;
 			}
 
@@ -251,8 +254,8 @@
 
 		void LogDebugInfo () {
 			AnnounceMate ();
-			Debug.Log ($"Best move: {bestMoveThisIteration.Name} Eval: {bestEvalThisIteration} Search time: {searchStopwatch.ElapsedMilliseconds} ms.");
-			Debug.Log ($"Num nodes: {numNodes} num Qnodes: {numQNodes} num cutoffs: {numCutoffs} num TThits {numTranspositions}");
+			Uci.Log ($"Best move: {bestMoveThisIteration.Name} Eval: {bestEvalThisIteration} Search time: {searchStopwatch.ElapsedMilliseconds} ms.");
+			Uci.Log ($"Num nodes: {numNodes} num Qnodes: {numQNodes} num cutoffs: {numCutoffs} num TThits {numTranspositions}");
 		}
 
 		void AnnounceMate () {
@@ -265,7 +268,7 @@
 
 				string sideWithMate = (bestEvalThisIteration * ((board.WhiteToMove) ? 1 : -1) < 0) ? "Black" : "White";
 
-				Debug.Log ($"{sideWithMate} can mate in {numMovesToMate} move{((numMovesToMate>1)?"s":"")}");
+				Uci.Log ($"{sideWithMate} can mate in {numMovesToMate} move{((numMovesToMate>1)?"s":"")}");
 			}
 		}
 
